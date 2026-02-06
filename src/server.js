@@ -17,6 +17,59 @@ const WORKSPACE_DIR =
   process.env.OPENCLAW_WORKSPACE_DIR?.trim() ||
   path.join(STATE_DIR, "workspace");
 
+const TEMPLATES_DIR = path.join(process.cwd(), "workspace-templates");
+
+// Initialize workspace with templates if it's a fresh deployment
+function initWorkspaceTemplates() {
+  try {
+    // Check if templates directory exists
+    if (!fs.existsSync(TEMPLATES_DIR)) {
+      console.log("[templates] no templates directory found, skipping");
+      return;
+    }
+
+    // Create workspace directory if needed
+    fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+    
+    // Check if BOOTSTRAP.md already exists (indicates templates already copied)
+    const bootstrapPath = path.join(WORKSPACE_DIR, "BOOTSTRAP.md");
+    const agentsPath = path.join(WORKSPACE_DIR, "AGENTS.md");
+    
+    // Only copy if workspace appears fresh (no AGENTS.md means fresh)
+    if (!fs.existsSync(agentsPath)) {
+      console.log("[templates] fresh workspace detected, copying templates...");
+      
+      // Recursively copy templates
+      copyDirSync(TEMPLATES_DIR, WORKSPACE_DIR);
+      console.log("[templates] workspace templates initialized");
+    } else {
+      console.log("[templates] workspace already initialized, skipping");
+    }
+  } catch (err) {
+    console.warn(`[templates] failed to init templates: ${err.message}`);
+  }
+}
+
+function copyDirSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath);
+    } else {
+      // Only copy if file doesn't exist
+      if (!fs.existsSync(destPath)) {
+        fs.copyFileSync(srcPath, destPath);
+        console.log(`[templates] copied ${entry.name}`);
+      }
+    }
+  }
+}
+
 const SETUP_PASSWORD = process.env.SETUP_PASSWORD?.trim();
 
 function resolveGatewayToken() {
@@ -941,6 +994,9 @@ app.use(async (req, res) => {
 
   return proxy.web(req, res, { target: GATEWAY_TARGET });
 });
+
+// Initialize workspace templates before starting
+initWorkspaceTemplates();
 
 const server = app.listen(PORT, () => {
   console.log(`[wrapper] listening on port ${PORT}`);
